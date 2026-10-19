@@ -7,8 +7,8 @@ import { paperlessResourceUri } from "./utils/responses";
 
 describe("embedded binary resources", () => {
   test("uses an absolute URI and percent-encodes filenames", () => {
-    const uri = paperlessResourceUri("documents", 763, "Ärztliche Unterlagen/2026.pdf");
-    assert.equal(uri, "paperless://files/documents/763/%C3%84rztliche%20Unterlagen%2F2026.pdf");
+    const uri = paperlessResourceUri("documents", 42, "Ärztliche Unterlagen/2026.pdf");
+    assert.equal(uri, "paperless://files/documents/42/%C3%84rztliche%20Unterlagen%2F2026.pdf");
     assert.equal(new URL(uri).protocol, "paperless:");
   });
 
@@ -22,9 +22,9 @@ describe("embedded binary resources", () => {
       }),
     }));
 
-    const result = await tools.get("download_document")!.callback({ id: 763 });
+    const result = await tools.get("download_document")!.callback({ id: 42 });
     assert.deepEqual(getResourceContent(result), {
-      uri: "paperless://files/documents/763/Bericht%202026.pdf",
+      uri: "paperless://files/documents/42/Bericht%202026.pdf",
       blob: bytes.toString("base64"),
       mimeType: "application/pdf",
     });
@@ -37,9 +37,9 @@ describe("embedded binary resources", () => {
       getThumbnail: async () => ({ data: bytes }),
     }));
 
-    const result = await tools.get("get_document_thumbnail")!.callback({ id: 763 });
+    const result = await tools.get("get_document_thumbnail")!.callback({ id: 42 });
     assert.deepEqual(getResourceContent(result), {
-      uri: "paperless://files/documents/763/thumbnail.webp",
+      uri: "paperless://files/documents/42/thumbnail.webp",
       blob: bytes.toString("base64"),
       mimeType: "image/webp",
     });
@@ -52,9 +52,9 @@ describe("embedded binary resources", () => {
       requestRaw: async () => ({ data: bytes }),
     }));
 
-    const result = await tools.get("get_document_preview")!.callback({ id: 763 });
+    const result = await tools.get("get_document_preview")!.callback({ id: 42 });
     assert.deepEqual(getResourceContent(result), {
-      uri: "paperless://files/documents/763/preview.webp",
+      uri: "paperless://files/documents/42/preview.webp",
       blob: bytes.toString("base64"),
       mimeType: "image/webp",
     });
@@ -67,7 +67,7 @@ describe("embedded binary resources", () => {
       requestRaw: async () => ({ data: bytes }),
     }));
 
-    const result = await tools.get("download_documents_bulk")!.callback({ documents: [763] });
+    const result = await tools.get("download_documents_bulk")!.callback({ documents: [42] });
     assert.deepEqual(getResourceContent(result), {
       uri: "paperless://files/documents/bulk-download.zip",
       blob: bytes.toString("base64"),
