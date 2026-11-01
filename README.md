@@ -409,3 +409,13 @@ sizes. It deliberately never writes API tokens, MCP headers, argument values,
 document IDs, document text or file bytes. Disable the setting after diagnosis.
 The log is **not** a wire-level trace and cannot report errors in the client
 that occur after a successful HTTP response.
+
+### Minimal diagnostic mode
+
+To isolate a client-side `tools/list` or tool-result failure, set both
+`PAPERLESS_MCP_SAFE_MODE=1` and `PAPERLESS_MCP_DIAGNOSTICS=1` on the container,
+then restart it. Safe mode registers **only** read-only `get_system_status` and
+`list_documents` (IDs and titles only, maximum 10). It completely omits the
+normal set of tools and all binary endpoints. The normal full feature set is
+restored by removing `PAPERLESS_MCP_SAFE_MODE` (or setting it to `0`) and
+restarting. This mode is for diagnosis, not everyday use.
