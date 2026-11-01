@@ -14,10 +14,19 @@ import { isTerminalTaskStatus, pollConsumeTask } from "./utils/tasks";
 import {
   parseFilenameFromContentDisposition,
   paperlessResourceUri,
+  binaryModeNotice,
+  logBinaryTransfer,
   requireConfirm,
 } from "./utils/responses";
 import { buildQueryString } from "./utils/queryString";
 import { paginationFields, permissionsSchema } from "./utils/schemas";
+
+function getContentTypeHeader(headers: unknown): string {
+  if (!headers || typeof headers !== "object") return "";
+  const h = headers as { get?: (name: string) => string | null } & Record<string, string | undefined>;
+  const raw = typeof h.get === "function" ? h.get("content-type") : h["content-type"];
+  return (raw ?? "").split(";")[0].trim().toLowerCase();
+}
 
 function getContentDispositionHeader(headers: unknown): string | null {
   if (!headers || typeof headers !== "object") return null;
@@ -500,53 +509,60 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "download_document",
-    "Download a document file by ID. Returns the document as a base64-encoded resource.",
+    "Download a document by ID. By default returns a small text notice (NO binary data). Only set mode='resource' when the user explicitly needs the file; large MCP binary results may not be supported by every client.",
     {
       id: z.number(),
       original: z.boolean().optional(),
+      mode: z.enum(["metadata", "resource"]).optional()
+        .describe("metadata (default) does NOT download or return file bytes; resource explicitly returns base64 file content."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
+      if (args.mode !== "resource") {
+        return binaryModeNotice("download_document", "resource");
+      }
       const response = await api.downloadDocument(args.id, args.original);
       const filename = parseFilenameFromContentDisposition(
         getContentDispositionHeader(response.headers),
         `document-${args.id}`
       );
+      const data = Buffer.from(response.data);
+      logBinaryTransfer("download_document", data.byteLength, "resource");
       return {
-        content: [
-          {
-            type: "resource",
-            resource: {
-              uri: paperlessResourceUri("documents", args.id, filename),
-              blob: Buffer.from(response.data).toString("base64"),
-              mimeType: "application/pdf",
-            },
+        content: [{
+          type: "resource" as const,
+          resource: {
+            uri: paperlessResourceUri("documents", args.id, filename),
+            blob: data.toString("base64"),
+            mimeType: getContentTypeHeader(response.headers) || "application/pdf",
           },
-        ],
+        }],
       };
     })
   );
 
   server.tool(
     "get_document_thumbnail",
-    "Get a document thumbnail (image preview) by ID. Returns the thumbnail as a base64-encoded WebP image resource.",
+    "Get a document thumbnail. Default metadata mode returns a compact text notice, NOT image bytes. Set mode='image' only for an explicitly requested image preview; this may fail in some MCP clients.",
     {
       id: z.number(),
+      mode: z.enum(["metadata", "image"]).optional()
+        .describe("metadata (default) avoids binary content; image explicitly returns native MCP image content."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
+      if (args.mode !== "image") {
+        return binaryModeNotice("get_document_thumbnail", "image");
+      }
       const response = await api.getThumbnail(args.id);
+      const data = Buffer.from(response.data);
+      logBinaryTransfer("get_document_thumbnail", data.byteLength, "image");
       return {
-        content: [
-          {
-            type: "resource",
-            resource: {
-              uri: paperlessResourceUri("documents", args.id, "thumbnail.webp"),
-              blob: Buffer.from(response.data).toString("base64"),
-              mimeType: "image/webp",
-            },
-          },
-        ],
+        content: [{
+          type: "image" as const,
+          data: data.toString("base64"),
+          mimeType: getContentTypeHeader(response.headers) || "image/webp",
+        }],
       };
     })
   );
@@ -714,27 +730,44 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "get_document_preview",
-    "Get a full-page preview image of a document. Returns the preview as a base64-encoded image resource.",
+    "Get the full-page document preview. Default metadata mode returns a small text notice, NOT binary data. Set mode='image' ONLY if the user explicitly requests a preview; unsupported MIME types are returned as text rather than incorrectly labelled image data.",
     {
       id: z.number().describe("The document ID"),
+      mode: z.enum(["metadata", "image"]).optional()
+        .describe("metadata (default) avoids binary data; image opts into native MCP image output."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
+      if (args.mode !== "image") {
+        return binaryModeNotice("get_document_preview", "image");
+      }
       const response = await api.requestRaw(`/documents/${args.id}/preview/`, {
         responseType: "arraybuffer",
       });
+      const mimeType = getContentTypeHeader(response.headers);
+      if (mimeType && !mimeType.startsWith("image/")) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              tool: "get_document_preview",
+              status: "unsupported_image_mime_type",
+              mimeType,
+              message: "Paperless did not return an image; binary content was suppressed to protect the MCP client.",
+            }),
+          }],
+        };
+      }
+      const data = Buffer.from(response.data);
+      logBinaryTransfer("get_document_preview", data.byteLength, "image");
       return {
-        content: [
-          {
-            type: "resource",
-            resource: {
-              uri: paperlessResourceUri("documents", args.id, "preview.webp"),
-              blob: Buffer.from(response.data).toString("base64"),
-              mimeType: "image/webp",
-            },
-          },
-        ],
+        content: [{
+          type: "image" as const,
+          data: data.toString("base64"),
+          mimeType: mimeType || "image/webp",
+        }],
       };
     })
   );
+
 }
