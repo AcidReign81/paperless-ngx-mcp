@@ -14,7 +14,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ### Fixed
 
-- **Binary tool responses used invalid relative resource URIs.** `download_document`, `get_document_thumbnail`, `get_document_preview`, and `download_documents_bulk` now return absolute `paperless://files/` URIs with percent-encoded path segments. The embedded file bytes and MIME types are unchanged; added regression tests cover the four tools.
+- **Earlier binary resource URIs were relative and invalid.** The download tools now use absolute `paperless://files/` URIs with percent-encoded path segments. Preview and thumbnail tools instead return native MCP `image` blocks when explicitly requested. Regression tests cover all four tools.
 
 ## [3.2.1] — 2026-10-01
 
