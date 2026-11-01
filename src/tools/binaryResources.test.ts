@@ -64,24 +64,50 @@ describe("MCP binary safety and image compatibility", () => {
     assert.equal(calls, 1);
   });
 
-  test("preview defaults to metadata and only requests Paperless for explicit image", async () => {
-    let calls = 0;
+  test("preview defaults to metadata and returns native thumbnail for image mode", async () => {
+    let thumbnailCalls = 0;
+    let pdfCalls = 0;
     const bytes = Buffer.from([4, 5, 6]);
     const { server, tools } = createMockServer();
     registerDocumentTools(server, createMockApi({
-      requestRaw: async () => { calls++; return { data: bytes, headers: { "content-type": "image/webp" } }; },
+      getThumbnail: async () => {
+        thumbnailCalls++;
+        return { data: bytes, headers: { "content-type": "image/webp" } };
+      },
+      requestRaw: async () => {
+        pdfCalls++;
+        return { data: Buffer.from("%PDF"), headers: { "content-type": "application/pdf" } };
+      },
     }));
     const safe = await tools.get("get_document_preview")!.callback({ id: 42 });
-    assert.equal(calls, 0);
+    assert.equal(thumbnailCalls + pdfCalls, 0);
     assert.equal((getTextContent(safe) as { status: string }).status, "binary_suppressed");
     const result = await tools.get("get_document_preview")!.callback({ id: 42, mode: "image" });
     assert.deepEqual(imageContent(result), {
       type: "image", data: bytes.toString("base64"), mimeType: "image/webp",
     });
-    assert.equal(calls, 1);
+    assert.equal(thumbnailCalls, 1);
+    assert.equal(pdfCalls, 0);
+    assert.match(JSON.stringify(result), /lower-resolution thumbnail/);
   });
 
-  test("non-image preview response is rejected without exposing bytes", async () => {
+  test("PDF preview uses explicitly requested resource mode", async () => {
+    const pdf = Buffer.from("%PDF-1.7");
+    const { server, tools } = createMockServer();
+    registerDocumentTools(server, createMockApi({
+      requestRaw: async () => ({
+        data: pdf, headers: { "content-type": "application/pdf" },
+      }),
+    }));
+    const result = await tools.get("get_document_preview")!.callback({ id: 42, mode: "resource" });
+    assert.deepEqual(getResourceContent(result), {
+      uri: "paperless://files/documents/42/preview.pdf",
+      blob: pdf.toString("base64"),
+      mimeType: "application/pdf",
+    });
+  });
+
+  test("unexpected preview content is withheld", async () => {
     const { server, tools } = createMockServer();
     registerDocumentTools(server, createMockApi({
       requestRaw: async () => ({
@@ -89,9 +115,8 @@ describe("MCP binary safety and image compatibility", () => {
         headers: { "content-type": "text/html; charset=utf-8" },
       }),
     }));
-    const result = await tools.get("get_document_preview")!.callback({ id: 42, mode: "image" });
-    assert.equal((getTextContent(result) as { status: string }).status, "unsupported_image_mime_type");
-    assert.equal(imageContent(result), undefined);
+    const result = await tools.get("get_document_preview")!.callback({ id: 42, mode: "resource" });
+    assert.equal((getTextContent(result) as { status: string }).status, "unsupported_preview_mime_type");
     assert.equal(JSON.stringify(result).includes("private error details"), false);
   });
 
