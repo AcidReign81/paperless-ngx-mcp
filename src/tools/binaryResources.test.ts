@@ -1,11 +1,12 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { registerDocumentTools } from "./documents";
 import { registerSystemTools } from "./system";
 import { createMockApi, createMockServer, getResourceContent, getTextContent } from "./test-helpers";
 import { paperlessResourceUri } from "./utils/responses";
 
-function imageContent(result: { content: Array<Record<string, unknown>> }) {
+function imageContent(result: CallToolResult) {
   return result.content.find((part) => part.type === "image");
 }
 
