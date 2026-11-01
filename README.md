@@ -419,3 +419,33 @@ then restart it. Safe mode registers **only** read-only `get_system_status` and
 normal set of tools and all binary endpoints. The normal full feature set is
 restored by removing `PAPERLESS_MCP_SAFE_MODE` (or setting it to `0`) and
 restarting. This mode is for diagnosis, not everyday use.
+
+### Full PDF access without oversized MCP responses
+
+The recommended way to inspect **all pages** of a Paperless PDF, including
+scanned signatures, stamps, handwritten notes, and tables, is:
+
+1. `get_document_pdf_info({ id })` returns the PDF's actual page count and
+   bytes, without sending its contents to the model.
+2. `get_document_pdf_page({ id, page: 1 })` returns **one complete page** as
+   a native MCP JPEG image, alongside up to 14,000 characters of selectable
+   text from the same page. Request additional pages individually, including
+   pages after the first one.
+3. When a user explicitly needs the original binary PDF file and it is small,
+   `download_document({ id, mode: "resource" })` returns an embedded file
+   resource. However, not all clients can ingest embedded PDFs. The maximum
+   binary response is intentionally 2 MiB. For larger PDFs use page tools
+   or the Paperless UI for the original download.
+
+The page renderer uses `pdfinfo`, `pdftotext`, and `pdftoppm` from Poppler
+inside the Docker image. Up to 50 MiB input PDFs are accepted for page
+inspection. Each page image is limited to 1.5 MB and 1600 pixels on the
+longest edge, and large page renders automatically fall back to 900 pixels.
+The temporary input PDF and rendered images are deleted after each tool
+call. No PDF contents or authentication credentials are logged.
+
+This is **read-only**; the original Paperless document and its versions are
+never changed. Encrypted, damaged, exceptionally large, or non-PDF source
+documents may not be renderable. High-resolution source fidelity is only
+available via the original PDF download; an individual rendered page is
+intended for visual inspection, not as a lossless archive/export.
