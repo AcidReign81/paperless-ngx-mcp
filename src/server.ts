@@ -3,6 +3,7 @@ import { PaperlessAPI } from "./api/PaperlessAPI";
 import { registerCorrespondentTools } from "./tools/correspondents";
 import { registerCustomFieldTools } from "./tools/customFields";
 import { registerDocumentTools } from "./tools/documents";
+import { registerDiagnosticTools } from "./tools/diagnostic";
 import { registerDocumentVersionTools } from "./tools/documentVersions";
 import { registerDocumentTypeTools } from "./tools/documentTypes";
 import { registerPrompts } from "./tools/prompts";
@@ -68,6 +69,13 @@ Quick tool-selection guide:
       `,
     }
   );
+
+  // The intentionally tiny read-only tool set helps isolate client failures
+  // during tools/list without involving document binary responses.
+  if (process.env.PAPERLESS_MCP_SAFE_MODE === "1") {
+    registerDiagnosticTools(server, api);
+    return server;
+  }
 
   registerDocumentTools(server, api);
   registerDocumentVersionTools(server, api);
