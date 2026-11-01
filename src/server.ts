@@ -4,6 +4,7 @@ import { registerCorrespondentTools } from "./tools/correspondents";
 import { registerCustomFieldTools } from "./tools/customFields";
 import { registerDocumentTools } from "./tools/documents";
 import { registerDiagnosticTools } from "./tools/diagnostic";
+import { registerPdfTools } from "./tools/pdf";
 import { registerDocumentVersionTools } from "./tools/documentVersions";
 import { registerDocumentTypeTools } from "./tools/documentTypes";
 import { registerPrompts } from "./tools/prompts";
@@ -79,6 +80,7 @@ Quick tool-selection guide:
   }
 
   registerDocumentTools(server, api);
+  registerPdfTools(server, api);
   registerDocumentVersionTools(server, api);
   registerTagTools(server, api);
   registerCorrespondentTools(server, api);
