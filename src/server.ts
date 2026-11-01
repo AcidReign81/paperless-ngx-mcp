@@ -66,6 +66,8 @@ Quick tool-selection guide:
 | Add a corrected/signed/unlocked file to an existing document | upload_document_version |
 | Build an automation | create_workflow (triggers + actions in one call) |
 | Inspect or fix how mail is imported | list_mail_rules / update_mail_rule |
+| Inspect all pages, tables, scans, stamps, or signatures of a PDF | get_document_pdf_info, then get_document_pdf_page for every needed page |
+| Obtain an original small PDF file explicitly | download_document with mode="resource" (2 MiB maximum; client compatibility varies) |
 | Check which Paperless version is running | get_system_status |
 | Know every tag, correspondent, document type, storage path and custom field before filing | get_filing_options (one call) |
       `,
