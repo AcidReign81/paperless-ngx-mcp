@@ -6,7 +6,7 @@ import { arrayNotEmpty } from "./utils/empty";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
 import { fetchAllPages, PaginatedResponse } from "./utils/paginate";
-import { deletedResponse, paperlessResourceUri, requireConfirm } from "./utils/responses";
+import { deletedResponse, paperlessResourceUri, binaryModeNotice, logBinaryTransfer, requireConfirm } from "./utils/responses";
 import { paginationFields } from "./utils/schemas";
 
 interface Task {
@@ -386,42 +386,42 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "download_documents_bulk",
-    "Download multiple documents as a ZIP archive. Returns base64-encoded ZIP file.",
+    "Download multiple documents as ZIP. Default metadata mode returns only a small text notice; mode='resource' must be explicitly requested to return base64 ZIP bytes.",
     {
       documents: z.array(z.number()).min(1).max(500).describe("Array of document IDs to download (max 500)"),
-      content: z
-        .enum(["both", "originals", "archive"])
-        .optional()
+      content: z.enum(["both", "originals", "archive"]).optional()
         .describe("Which file versions to include (default: both)"),
-      compression: z
-        .enum(["none", "lzma", "bzip2", "deflated"])
-        .optional()
+      compression: z.enum(["none", "lzma", "bzip2", "deflated"]).optional()
         .describe("ZIP compression method (default: none)"),
-      follow_formatting: z
-        .boolean()
-        .optional()
+      follow_formatting: z.boolean().optional()
         .describe("Use document storage path formatting for filenames"),
+      mode: z.enum(["metadata", "resource"]).optional()
+        .describe("metadata (default) avoids ZIP binary data; resource explicitly returns base64 ZIP."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
-      const { documents, ...options } = args;
+      const { documents, mode, ...options } = args;
+      if (mode !== "resource") {
+        return binaryModeNotice("download_documents_bulk", "resource");
+      }
       const response = await api.requestRaw("/documents/bulk_download/", {
         method: "POST",
         body: JSON.stringify({ documents, ...options }),
         responseType: "arraybuffer",
       });
+      const data = Buffer.from(response.data as ArrayBuffer);
+      logBinaryTransfer("download_documents_bulk", data.byteLength, "resource");
       return {
-        content: [
-          {
-            type: "resource",
-            resource: {
-              uri: paperlessResourceUri("documents", "bulk-download.zip"),
-              blob: Buffer.from(response.data as ArrayBuffer).toString("base64"),
-              mimeType: "application/zip",
-            },
+        content: [{
+          type: "resource" as const,
+          resource: {
+            uri: paperlessResourceUri("documents", "bulk-download.zip"),
+            blob: data.toString("base64"),
+            mimeType: "application/zip",
           },
-        ],
+        }],
       };
     })
   );
+
 }
