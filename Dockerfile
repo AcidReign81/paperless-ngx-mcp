@@ -9,6 +9,8 @@ COPY src ./src
 RUN npm run build
 
 FROM node:24-alpine
+# Poppler renders individual PDF pages, no external network calls or JS native addons.
+RUN apk add --no-cache poppler-utils
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package.json package-lock.json ./
