@@ -527,6 +527,18 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         `document-${args.id}`
       );
       const data = Buffer.from(response.data);
+      if (data.byteLength > 2 * 1024 * 1024) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "resource_too_large",
+              sizeBytes: data.byteLength,
+              message: "Direct PDF/file transfer is limited to 2 MiB to protect the MCP client. Use get_document_pdf_info and get_document_pdf_page to read all PDF pages instead.",
+            }),
+          }],
+        };
+      }
       logBinaryTransfer("download_document", data.byteLength, "resource");
       return {
         content: [{
@@ -794,7 +806,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         };
       }
       const data = Buffer.from(response.data);
-      if (data.byteLength > 10 * 1024 * 1024) {
+      if (data.byteLength > 2 * 1024 * 1024) {
         return {
           content: [{
             type: "text" as const,
@@ -802,7 +814,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
               tool: "get_document_preview",
               status: "resource_too_large",
               sizeBytes: data.byteLength,
-              message: "Preview exceeds 10 MiB and was withheld to avoid client failure.",
+              message: "Preview exceeds 2 MiB and was withheld. Read each PDF page with get_document_pdf_page instead.",
             }),
           }],
         };
