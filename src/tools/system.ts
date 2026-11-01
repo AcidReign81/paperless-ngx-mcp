@@ -410,6 +410,18 @@ export function registerSystemTools(server: McpServer, api: PaperlessAPI) {
         responseType: "arraybuffer",
       });
       const data = Buffer.from(response.data as ArrayBuffer);
+      if (data.byteLength > 2 * 1024 * 1024) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "resource_too_large",
+              sizeBytes: data.byteLength,
+              message: "Bulk ZIP is larger than the safe 2 MiB MCP limit. Use individual document and PDF-page tools, or download the ZIP in Paperless directly.",
+            }),
+          }],
+        };
+      }
       logBinaryTransfer("download_documents_bulk", data.byteLength, "resource");
       return {
         content: [{
