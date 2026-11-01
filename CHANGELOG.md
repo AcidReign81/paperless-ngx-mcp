@@ -9,6 +9,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Binary tools (`get_document_preview`, `get_document_thumbnail`, `download_document`, and `download_documents_bulk`) now default to a small text-only `binary_suppressed` result. Use `mode: "image"` for the two image tools or `mode: "resource"` for document/ZIP downloads only after explicit client/user opt-in.
 - Preview and thumbnail opt-in results use native MCP `image` content instead of `resource` blocks, with MIME type detected from Paperless headers.
 - Opt-in HTTP diagnostics with `PAPERLESS_MCP_DIAGNOSTICS=1`: records RPC method, tool name, HTTP status, elapsed time and response content length, or an interrupted POST. Never logs authentication, arguments, document identifiers or document bytes. Disable it when troubleshooting is finished.
+- Optional `PAPERLESS_MCP_SAFE_MODE=1` registers just two read-only, small-response tools for testing whether the client fails during tool discovery or when processing a normal tool result.
 - This compatibility change is intentionally **not** backwards-compatible for clients expecting binary results without a mode argument.
 
 ### Fixed
