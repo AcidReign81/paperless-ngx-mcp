@@ -386,3 +386,26 @@ This MCP server wraps endpoints from the Paperless-NGX REST API. See the [offici
 ## License
 
 ISC. See [LICENSE](LICENSE).
+
+## ChatGPT MCP compatibility (diagnostic fork)
+
+Some MCP clients cannot render embedded binary `resource` content reliably. To
+avoid accidental large binary responses, four tools are **text-only by default**:
+`get_document_preview`, `get_document_thumbnail`, `download_document` and
+`download_documents_bulk`. Their default output is a compact JSON notice
+with `status: "binary_suppressed"` without fetching file data.
+
+For an **explicit** file request use `mode: "resource"` on download tools.
+For an explicitly requested image use `mode: "image"` on preview/thumbnail tools.
+Image mode returns MCP `image` content (base64-encoded internally); an image
+result can still be rejected by some clients or their transport layers.
+Ordinary document search, document text and metadata tools are unchanged.
+
+For debugging a client connection, enable `PAPERLESS_MCP_DIAGNOSTICS=1` in the
+container environment and inspect Docker logs. It records request start,
+completion or interruption, RPC method, tool name, HTTP status, elapsed
+milliseconds, content length when supplied by HTTP, and opted-in binary
+sizes. It deliberately never writes API tokens, MCP headers, argument values,
+document IDs, document text or file bytes. Disable the setting after diagnosis.
+The log is **not** a wire-level trace and cannot report errors in the client
+that occur after a successful HTTP response.
