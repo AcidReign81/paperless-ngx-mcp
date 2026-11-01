@@ -386,3 +386,66 @@ This MCP server wraps endpoints from the Paperless-NGX REST API. See the [offici
 ## License
 
 ISC. See [LICENSE](LICENSE).
+
+## ChatGPT MCP compatibility (diagnostic fork)
+
+Some MCP clients cannot render embedded binary `resource` content reliably. To
+avoid accidental large binary responses, four tools are **text-only by default**:
+`get_document_preview`, `get_document_thumbnail`, `download_document` and
+`download_documents_bulk`. Their default output is a compact JSON notice
+with `status: "binary_suppressed"` without fetching file data.
+
+For an **explicit** file request use `mode: "resource"` on download tools.
+For an explicitly requested image use `mode: "image"` on preview/thumbnail tools.
+Image mode returns MCP `image` content (base64-encoded internally); an image
+result can still be rejected by some clients or their transport layers.
+Ordinary document search, document text and metadata tools are unchanged.
+
+For debugging a client connection, enable `PAPERLESS_MCP_DIAGNOSTICS=1` in the
+container environment and inspect Docker logs. It records request start,
+completion or interruption, RPC method, tool name, HTTP status, elapsed
+milliseconds, content length when supplied by HTTP, and opted-in binary
+sizes. It deliberately never writes API tokens, MCP headers, argument values,
+document IDs, document text or file bytes. Disable the setting after diagnosis.
+The log is **not** a wire-level trace and cannot report errors in the client
+that occur after a successful HTTP response.
+
+### Minimal diagnostic mode
+
+To isolate a client-side `tools/list` or tool-result failure, set both
+`PAPERLESS_MCP_SAFE_MODE=1` and `PAPERLESS_MCP_DIAGNOSTICS=1` on the container,
+then restart it. Safe mode registers **only** read-only `get_system_status` and
+`list_documents` (IDs and titles only, maximum 10). It completely omits the
+normal set of tools and all binary endpoints. The normal full feature set is
+restored by removing `PAPERLESS_MCP_SAFE_MODE` (or setting it to `0`) and
+restarting. This mode is for diagnosis, not everyday use.
+
+### Full PDF access without oversized MCP responses
+
+The recommended way to inspect **all pages** of a Paperless PDF, including
+scanned signatures, stamps, handwritten notes, and tables, is:
+
+1. `get_document_pdf_info({ id })` returns the PDF's actual page count and
+   bytes, without sending its contents to the model.
+2. `get_document_pdf_page({ id, page: 1 })` returns **one complete page** as
+   a native MCP JPEG image, alongside up to 14,000 characters of selectable
+   text from the same page. Request additional pages individually, including
+   pages after the first one.
+3. When a user explicitly needs the original binary PDF file and it is small,
+   `download_document({ id, mode: "resource" })` returns an embedded file
+   resource. However, not all clients can ingest embedded PDFs. The maximum
+   binary response is intentionally 2 MiB. For larger PDFs use page tools
+   or the Paperless UI for the original download.
+
+The page renderer uses `pdfinfo`, `pdftotext`, and `pdftoppm` from Poppler
+inside the Docker image. Up to 50 MiB input PDFs are accepted for page
+inspection. Each page image is limited to 1.5 MB and 1600 pixels on the
+longest edge, and large page renders automatically fall back to 900 pixels.
+The temporary input PDF and rendered images are deleted after each tool
+call. No PDF contents or authentication credentials are logged.
+
+This is **read-only**; the original Paperless document and its versions are
+never changed. Encrypted, damaged, exceptionally large, or non-PDF source
+documents may not be renderable. High-resolution source fidelity is only
+available via the original PDF download; an individual rendered page is
+intended for visual inspection, not as a lossless archive/export.

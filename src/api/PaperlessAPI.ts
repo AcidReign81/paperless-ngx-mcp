@@ -246,6 +246,8 @@ export class PaperlessAPI {
           Authorization: `Token ${this.token}`,
         },
         responseType: "arraybuffer",
+        timeout: 90_000,
+        maxContentLength: 50 * 1024 * 1024,
       }
     );
     return response;
@@ -482,6 +484,8 @@ export class PaperlessAPI {
         },
         data: options.body,
         responseType: options.responseType ?? "arraybuffer",
+        timeout: 90_000,
+        maxContentLength: 50 * 1024 * 1024,
       });
       return response as AxiosResponse<T>;
     } catch (error: unknown) {

@@ -13,10 +13,20 @@ import { validateCustomFields } from "./utils/monetary";
 import { isTerminalTaskStatus, pollConsumeTask } from "./utils/tasks";
 import {
   parseFilenameFromContentDisposition,
+  paperlessResourceUri,
+  binaryModeNotice,
+  logBinaryTransfer,
   requireConfirm,
 } from "./utils/responses";
 import { buildQueryString } from "./utils/queryString";
 import { paginationFields, permissionsSchema } from "./utils/schemas";
+
+function getContentTypeHeader(headers: unknown): string {
+  if (!headers || typeof headers !== "object") return "";
+  const h = headers as { get?: (name: string) => string | null } & Record<string, string | undefined>;
+  const raw = typeof h.get === "function" ? h.get("content-type") : h["content-type"];
+  return (raw ?? "").split(";")[0].trim().toLowerCase();
+}
 
 function getContentDispositionHeader(headers: unknown): string | null {
   if (!headers || typeof headers !== "object") return null;
@@ -499,53 +509,72 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "download_document",
-    "Download a document file by ID. Returns the document as a base64-encoded resource.",
+    "Download a document by ID. By default returns a small text notice (NO binary data). Only set mode='resource' when the user explicitly needs the file; large MCP binary results may not be supported by every client.",
     {
       id: z.number(),
       original: z.boolean().optional(),
+      mode: z.enum(["metadata", "resource"]).optional()
+        .describe("metadata (default) does NOT download or return file bytes; resource explicitly returns base64 file content."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
+      if (args.mode !== "resource") {
+        return binaryModeNotice("download_document", "resource");
+      }
       const response = await api.downloadDocument(args.id, args.original);
       const filename = parseFilenameFromContentDisposition(
         getContentDispositionHeader(response.headers),
         `document-${args.id}`
       );
+      const data = Buffer.from(response.data);
+      if (data.byteLength > 2 * 1024 * 1024) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "resource_too_large",
+              sizeBytes: data.byteLength,
+              message: "Direct PDF/file transfer is limited to 2 MiB to protect the MCP client. Use get_document_pdf_info and get_document_pdf_page to read all PDF pages instead.",
+            }),
+          }],
+        };
+      }
+      logBinaryTransfer("download_document", data.byteLength, "resource");
       return {
-        content: [
-          {
-            type: "resource",
-            resource: {
-              uri: filename,
-              blob: Buffer.from(response.data).toString("base64"),
-              mimeType: "application/pdf",
-            },
+        content: [{
+          type: "resource" as const,
+          resource: {
+            uri: paperlessResourceUri("documents", args.id, filename),
+            blob: data.toString("base64"),
+            mimeType: getContentTypeHeader(response.headers) || "application/pdf",
           },
-        ],
+        }],
       };
     })
   );
 
   server.tool(
     "get_document_thumbnail",
-    "Get a document thumbnail (image preview) by ID. Returns the thumbnail as a base64-encoded WebP image resource.",
+    "Get a document thumbnail. Default metadata mode returns a compact text notice, NOT image bytes. Set mode='image' only for an explicitly requested image preview; this may fail in some MCP clients.",
     {
       id: z.number(),
+      mode: z.enum(["metadata", "image"]).optional()
+        .describe("metadata (default) avoids binary content; image explicitly returns native MCP image content."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
+      if (args.mode !== "image") {
+        return binaryModeNotice("get_document_thumbnail", "image");
+      }
       const response = await api.getThumbnail(args.id);
+      const data = Buffer.from(response.data);
+      logBinaryTransfer("get_document_thumbnail", data.byteLength, "image");
       return {
-        content: [
-          {
-            type: "resource",
-            resource: {
-              uri: `document-${args.id}-thumb.webp`,
-              blob: Buffer.from(response.data).toString("base64"),
-              mimeType: "image/webp",
-            },
-          },
-        ],
+        content: [{
+          type: "image" as const,
+          data: data.toString("base64"),
+          mimeType: getContentTypeHeader(response.headers) || "image/webp",
+        }],
       };
     })
   );
@@ -713,27 +742,95 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "get_document_preview",
-    "Get a full-page preview image of a document. Returns the preview as a base64-encoded image resource.",
+    "Preview a document safely. Default metadata mode returns only a small text notice. mode='image' returns the Paperless WebP thumbnail with an explicit reduced-resolution notice because the Paperless preview endpoint commonly serves a PDF, not an image. mode='resource' explicitly returns the full inline PDF/file resource and may be too large for some MCP clients.",
     {
       id: z.number().describe("The document ID"),
+      mode: z.enum(["metadata", "image", "resource"]).optional()
+        .describe("metadata (default): no binary data. image: small native MCP thumbnail, NOT a full-resolution render. resource: original Paperless inline PDF/file resource, potentially large."),
     },
     Annotations.READ,
     withErrorHandling(async (args) => {
+      if (!args.mode || args.mode === "metadata") {
+        return binaryModeNotice("get_document_preview", "image");
+      }
+
+      if (args.mode === "image") {
+        // Paperless /preview/ usually returns application/pdf. Do not pretend
+        // that the PDF bytes are a WebP image: use /thumb/ instead.
+        const thumbnail = await api.getThumbnail(args.id);
+        const mimeType = getContentTypeHeader(thumbnail.headers) || "image/webp";
+        if (!mimeType.startsWith("image/")) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: JSON.stringify({
+                tool: "get_document_preview",
+                status: "unsupported_image_mime_type",
+                mimeType,
+              }),
+            }],
+          };
+        }
+        const data = Buffer.from(thumbnail.data);
+        logBinaryTransfer("get_document_preview", data.byteLength, "image");
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Paperless preview is normally a PDF. Showing the lower-resolution thumbnail instead; request mode=resource only when full PDF data is explicitly needed.",
+            },
+            {
+              type: "image" as const,
+              data: data.toString("base64"),
+              mimeType,
+            },
+          ],
+        };
+      }
+
+      // Explicit opt-in for original inline Paperless preview bytes.
       const response = await api.requestRaw(`/documents/${args.id}/preview/`, {
         responseType: "arraybuffer",
       });
+      const mimeType = getContentTypeHeader(response.headers) || "application/pdf";
+      if (!mimeType.startsWith("image/") && mimeType !== "application/pdf") {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              tool: "get_document_preview",
+              status: "unsupported_preview_mime_type",
+              mimeType,
+            }),
+          }],
+        };
+      }
+      const data = Buffer.from(response.data);
+      if (data.byteLength > 2 * 1024 * 1024) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: JSON.stringify({
+              tool: "get_document_preview",
+              status: "resource_too_large",
+              sizeBytes: data.byteLength,
+              message: "Preview exceeds 2 MiB and was withheld. Read each PDF page with get_document_pdf_page instead.",
+            }),
+          }],
+        };
+      }
+      logBinaryTransfer("get_document_preview", data.byteLength, "resource");
       return {
-        content: [
-          {
-            type: "resource",
-            resource: {
-              uri: `document-${args.id}-preview.webp`,
-              blob: Buffer.from(response.data).toString("base64"),
-              mimeType: "image/webp",
-            },
+        content: [{
+          type: "resource" as const,
+          resource: {
+            uri: paperlessResourceUri("documents", args.id, "preview.pdf"),
+            blob: data.toString("base64"),
+            mimeType,
           },
-        ],
+        }],
       };
     })
   );
+
 }

@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added (page-by-page full PDF access)
+
+- `get_document_pdf_info` inspects the real PDF page count and size.
+- `get_document_pdf_page` renders any selected page to a bounded native MCP JPEG, plus per-page selectable text. This handles multi-page scans without transferring a large PDF resource.
+- Docker image installs Poppler and runs unit/integration tests during the build.
+- Binary MCP responses are limited to 2 MiB, while PDF page rendering accepts input files up to 50 MiB.
+- Dedicated synthetic two-page PDF tests verify page 2, extraction, bounds, and MCP image output.
+
+### Changed (ChatGPT MCP diagnostic fork)
+
+- Binary tools (`get_document_preview`, `get_document_thumbnail`, `download_document`, and `download_documents_bulk`) now default to a small text-only `binary_suppressed` result. Use `mode: "image"` for the two image tools or `mode: "resource"` for document/ZIP downloads only after explicit client/user opt-in.
+- Preview and thumbnail opt-in results use native MCP `image` content instead of `resource` blocks, with MIME type detected from Paperless headers.
+- Opt-in HTTP diagnostics with `PAPERLESS_MCP_DIAGNOSTICS=1`: records RPC method, tool name, HTTP status, elapsed time and response content length, or an interrupted POST. Never logs authentication, arguments, document identifiers or document bytes. Disable it when troubleshooting is finished.
+- Optional `PAPERLESS_MCP_SAFE_MODE=1` registers just two read-only, small-response tools for testing whether the client fails during tool discovery or when processing a normal tool result.
+- This compatibility change is intentionally **not** backwards-compatible for clients expecting binary results without a mode argument.
+
+### Fixed
+
+- **Earlier binary resource URIs were relative and invalid.** The download tools now use absolute `paperless://files/` URIs with percent-encoded path segments. Preview and thumbnail tools instead return native MCP `image` blocks when explicitly requested. Regression tests cover all four tools.
+
 ## [3.2.1] — 2026-10-01
 
 Safer tag edits and fewer calls when an agent files or reads documents. Tested against **Paperless-ngx 3.2.1**, the latest Paperless release. No breaking changes: every new parameter is optional.

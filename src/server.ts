@@ -3,6 +3,8 @@ import { PaperlessAPI } from "./api/PaperlessAPI";
 import { registerCorrespondentTools } from "./tools/correspondents";
 import { registerCustomFieldTools } from "./tools/customFields";
 import { registerDocumentTools } from "./tools/documents";
+import { registerDiagnosticTools } from "./tools/diagnostic";
+import { registerPdfTools } from "./tools/pdf";
 import { registerDocumentVersionTools } from "./tools/documentVersions";
 import { registerDocumentTypeTools } from "./tools/documentTypes";
 import { registerPrompts } from "./tools/prompts";
@@ -27,10 +29,11 @@ export function createServer(
   api: PaperlessAPI,
   publicUrl: string | undefined
 ): McpServer {
+  const safeMode = process.env.PAPERLESS_MCP_SAFE_MODE === "1";
   const server = new McpServer(
     { name: "paperless-ngx", version },
     {
-      instructions: `
+      instructions: safeMode ? "Paperless MCP diagnostics only: use get_system_status or list_documents to test read-only connectivity. Do not infer that other tools are available." : `
 Paperless-NGX MCP Server Instructions
 
 ⚠️ CRITICAL: Always differentiate between operations on specific documents vs operations on the entire system:
@@ -63,13 +66,23 @@ Quick tool-selection guide:
 | Add a corrected/signed/unlocked file to an existing document | upload_document_version |
 | Build an automation | create_workflow (triggers + actions in one call) |
 | Inspect or fix how mail is imported | list_mail_rules / update_mail_rule |
+| Inspect all pages, tables, scans, stamps, or signatures of a PDF | get_document_pdf_info, then get_document_pdf_page for every needed page |
+| Obtain an original small PDF file explicitly | download_document with mode="resource" (2 MiB maximum; client compatibility varies) |
 | Check which Paperless version is running | get_system_status |
 | Know every tag, correspondent, document type, storage path and custom field before filing | get_filing_options (one call) |
       `,
     }
   );
 
+  // The intentionally tiny read-only tool set helps isolate client failures
+  // during tools/list without involving document binary responses.
+  if (safeMode) {
+    registerDiagnosticTools(server, api);
+    return server;
+  }
+
   registerDocumentTools(server, api);
+  registerPdfTools(server, api);
   registerDocumentVersionTools(server, api);
   registerTagTools(server, api);
   registerCorrespondentTools(server, api);
