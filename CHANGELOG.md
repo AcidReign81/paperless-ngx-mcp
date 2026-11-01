@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added (page-by-page full PDF access)
+
+- `get_document_pdf_info` inspects the real PDF page count and size.
+- `get_document_pdf_page` renders any selected page to a bounded native MCP JPEG, plus per-page selectable text. This handles multi-page scans without transferring a large PDF resource.
+- Docker image installs Poppler and runs unit/integration tests during the build.
+- Binary MCP responses are limited to 2 MiB, while PDF page rendering accepts input files up to 50 MiB.
+- Dedicated synthetic two-page PDF tests verify page 2, extraction, bounds, and MCP image output.
+
 ### Changed (ChatGPT MCP diagnostic fork)
 
 - Binary tools (`get_document_preview`, `get_document_thumbnail`, `download_document`, and `download_documents_bulk`) now default to a small text-only `binary_suppressed` result. Use `mode: "image"` for the two image tools or `mode: "resource"` for document/ZIP downloads only after explicit client/user opt-in.
