@@ -90,8 +90,9 @@ describe("safe PDF access", () => {
     registerPdfTools(server, createMockApi({
       downloadDocument: async () => ({ data: pdf, headers: { "content-type": "application/pdf" } }),
     }));
-    const info = getTextContent(await tools.get("get_document_pdf_info")!.callback({ id: 7 }))
-      as { pageCount: number };
+    const info = getTextContent(
+      await tools.get("get_document_pdf_info")!.callback({ id: 7 })
+    ) as { pageCount: number };
     assert.equal(info.pageCount, 2);
 
     const page = await tools.get("get_document_pdf_page")!.callback({ id: 7, page: 2, max_dimension: 900 });
