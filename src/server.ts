@@ -28,10 +28,11 @@ export function createServer(
   api: PaperlessAPI,
   publicUrl: string | undefined
 ): McpServer {
+  const safeMode = process.env.PAPERLESS_MCP_SAFE_MODE === "1";
   const server = new McpServer(
     { name: "paperless-ngx", version },
     {
-      instructions: `
+      instructions: safeMode ? "Paperless MCP diagnostics only: use get_system_status or list_documents to test read-only connectivity. Do not infer that other tools are available." : `
 Paperless-NGX MCP Server Instructions
 
 ⚠️ CRITICAL: Always differentiate between operations on specific documents vs operations on the entire system:
@@ -72,7 +73,7 @@ Quick tool-selection guide:
 
   // The intentionally tiny read-only tool set helps isolate client failures
   // during tools/list without involving document binary responses.
-  if (process.env.PAPERLESS_MCP_SAFE_MODE === "1") {
+  if (safeMode) {
     registerDiagnosticTools(server, api);
     return server;
   }
