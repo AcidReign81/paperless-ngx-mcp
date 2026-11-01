@@ -72,6 +72,42 @@ export function createHttpApp({
   const app = express();
   app.use(express.json({ limit: "1mb" }));
 
+  // Opt-in diagnostics, deliberately restricted to method/tool names and HTTP
+  // metadata. Never log headers, sessions, document IDs, arguments or contents.
+  if (process.env.PAPERLESS_MCP_DIAGNOSTICS === "1") {
+    app.use("/mcp", (req, res, next) => {
+      const body = req.body && typeof req.body === "object" ? req.body : {};
+      const method = typeof body.method === "string" && /^[a-z/]+$/.test(body.method)
+        ? body.method : "unknown";
+      const candidate = method === "tools/call" ? body.params?.name : undefined;
+      const tool = typeof candidate === "string" && /^[a-z_]{1,80}$/.test(candidate)
+        ? candidate : undefined;
+      const started = Date.now();
+      const fields = { httpMethod: req.method, rpcMethod: method, ...(tool ? { tool } : {}) };
+      console.info(JSON.stringify({ event: "mcp_request_start", ...fields }));
+      let finished = false;
+      res.once("finish", () => {
+        finished = true;
+        const length = res.getHeader("content-length");
+        console.info(JSON.stringify({
+          event: "mcp_request_finish", ...fields,
+          status: res.statusCode,
+          durationMs: Date.now() - started,
+          contentLength: typeof length === "number" || typeof length === "string" ? length : null,
+        }));
+      });
+      res.once("close", () => {
+        if (!finished && req.method === "POST") {
+          console.warn(JSON.stringify({
+            event: "mcp_request_interrupted", ...fields,
+            durationMs: Date.now() - started,
+          }));
+        }
+      });
+      next();
+    });
+  }
+
   const sessions = new Map<string, Session>();
   const sseTransports: Record<string, SSEServerTransport> = {};
   const sseServers: Record<string, McpServer> = {};
